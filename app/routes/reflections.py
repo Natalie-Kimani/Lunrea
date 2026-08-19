@@ -1,0 +1,109 @@
+from flask import Blueprint, request
+from flask_jwt_extended import get_jwt_identity, jwt_required
+
+from app.extensions import db
+from app.models import Memory, Reflection
+from app.utils.app_lock import app_unlocked_required
+
+
+reflection_bp = Blueprint(
+    "reflections",
+    __name__,
+    url_prefix="/api/memories"
+)
+
+
+@reflection_bp.post("/<int:memory_id>/reflections")
+@jwt_required()
+@app_unlocked_required
+def create_reflection(memory_id):
+    user_id = int(get_jwt_identity())
+
+    memory = (
+        Memory.query
+        .filter(
+            Memory.id == memory_id,
+            Memory.creator_id == user_id,
+            Memory.deleted_at.is_(None)
+        )
+        .first()
+    )
+
+    if not memory:
+        return {
+            "error": "Memory not found."
+        }, 404
+
+    data = request.get_json() or {}
+
+    content = data.get("content")
+
+    if not content:
+        return {
+            "error": "content is required."
+        }, 400
+
+    reflection = Reflection(
+        memory_id=memory.id,
+        user_id=user_id,
+        content=content
+    )
+
+    db.session.add(reflection)
+    db.session.commit()
+
+    return {
+        "message": "Reflection added successfully.",
+        "reflection": {
+            "id": reflection.id,
+            "memory_id": reflection.memory_id,
+            "user_id": reflection.user_id,
+            "content": reflection.content,
+            "created_at": reflection.created_at.isoformat(),
+            "updated_at": reflection.updated_at.isoformat(),
+        }
+    }, 201
+
+
+@reflection_bp.get("/<int:memory_id>/reflections")
+@jwt_required()
+@app_unlocked_required
+def get_reflections(memory_id):
+    user_id = int(get_jwt_identity())
+
+    memory = (
+        Memory.query
+        .filter(
+            Memory.id == memory_id,
+            Memory.creator_id == user_id,
+            Memory.deleted_at.is_(None)
+        )
+        .first()
+    )
+
+    if not memory:
+        return {
+            "error": "Memory not found."
+        }, 404
+
+    reflections = (
+        Reflection.query
+        .filter_by(memory_id=memory.id)
+        .order_by(Reflection.created_at.asc())
+        .all()
+    )
+
+    return {
+        "memory_id": memory.id,
+        "reflections": [
+            {
+                "id": reflection.id,
+                "memory_id": reflection.memory_id,
+                "user_id": reflection.user_id,
+                "content": reflection.content,
+                "created_at": reflection.created_at.isoformat(),
+                "updated_at": reflection.updated_at.isoformat(),
+            }
+            for reflection in reflections
+        ]
+    }, 200
