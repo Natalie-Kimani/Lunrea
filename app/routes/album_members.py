@@ -123,3 +123,86 @@ def get_members(album_id):
             for member in members
         ]
     }, 200
+
+@album_member_bp.patch("/<int:album_id>/members/<int:member_user_id>")
+@jwt_required()
+@app_unlocked_required
+def update_member(album_id, member_user_id):
+    user_id = int(get_jwt_identity())
+
+    album, role = get_album_access(album_id, user_id)
+
+    if not album:
+        return {"error": "Album not found."}, 404
+
+    if not can_manage_album(role):
+        return {
+            "error": "Only the album owner can manage members."
+        }, 403
+
+    member = AlbumMember.query.filter_by(
+        album_id=album.id,
+        user_id=member_user_id
+    ).first()
+
+    if not member:
+        return {
+            "error": "Album member not found."
+        }, 404
+
+    data = request.get_json() or {}
+    new_role = data.get("role")
+
+    if new_role not in {"viewer", "contributor"}:
+        return {
+            "error": "role must be viewer or contributor."
+        }, 400
+
+    member.role = new_role
+
+    db.session.commit()
+
+    return {
+        "message": "Member role updated successfully.",
+        "member": {
+            "id": member.id,
+            "album_id": member.album_id,
+            "user_id": member.user_id,
+            "role": member.role,
+            "joined_at": member.joined_at.isoformat(),
+        }
+    }, 200
+
+
+@album_member_bp.delete("/<int:album_id>/members/<int:member_user_id>")
+@jwt_required()
+@app_unlocked_required
+def remove_member(album_id, member_user_id):
+    user_id = int(get_jwt_identity())
+
+    album, role = get_album_access(album_id, user_id)
+
+    if not album:
+        return {"error": "Album not found."}, 404
+
+    if not can_manage_album(role):
+        return {
+            "error": "Only the album owner can manage members."
+        }, 403
+
+    member = AlbumMember.query.filter_by(
+        album_id=album.id,
+        user_id=member_user_id
+    ).first()
+
+    if not member:
+        return {
+            "error": "Album member not found."
+        }, 404
+
+    db.session.delete(member)
+    db.session.commit()
+
+    return {
+        "message": "Member removed successfully."
+    }, 200
