@@ -68,4 +68,5 @@ def create_app():
     from app.routes.chapter_memories import chapter_memory_bp
     app.register_blueprint(chapter_memory_bp)
 
+   
     return app

@@ -2,8 +2,12 @@ from flask import Blueprint, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from app.extensions import db
-from app.models import Album, AlbumMember, User
+from app.models import AlbumMember, User
 from app.utils.app_lock import app_unlocked_required
+from app.utils.album_permissions import (
+    get_album_access,
+    can_manage_album,
+)
 
 
 album_member_bp = Blueprint(
@@ -16,68 +20,69 @@ album_member_bp = Blueprint(
 @album_member_bp.post("/<int:album_id>/members")
 @jwt_required()
 @app_unlocked_required
-def add_album_member(album_id):
+def add_member(album_id):
     user_id = int(get_jwt_identity())
 
-    album = Album.query.filter_by(
-        id=album_id,
-        owner_id=user_id
-    ).first()
+    album, role = get_album_access(album_id, user_id)
 
     if not album:
+        return {"error": "Album not found."}, 404
+
+    if not can_manage_album(role):
         return {
-            "error": "Album not found."
-        }, 404
+            "error": "Only the album owner can manage members."
+        }, 403
 
     data = request.get_json() or {}
 
     member_user_id = data.get("user_id")
-    role = data.get("role", "viewer")
+    member_role = data.get("role", "viewer")
 
     if not member_user_id:
+        return {"error": "user_id is required."}, 400
+
+    if member_role not in {"viewer", "contributor"}:
         return {
-            "error": "user_id is required."
+            "error": "role must be viewer or contributor."
         }, 400
 
-    member_user = User.query.get(member_user_id)
+    member = User.query.filter_by(id=member_user_id).first()
 
-    if not member_user:
+    if not member:
+        return {"error": "User not found."}, 404
+
+    if member.id == album.owner_id:
         return {
-            "error": "User not found."
-        }, 404
+            "error": "The album owner is already a member."
+        }, 400
 
-    existing_member = AlbumMember.query.filter_by(
+    existing = AlbumMember.query.filter_by(
         album_id=album.id,
-        user_id=member_user_id
+        user_id=member.id
     ).first()
 
-    if existing_member:
+    if existing:
         return {
             "error": "User is already a member of this album."
         }, 409
 
-    if role not in ["viewer", "contributor"]:
-        return {
-            "error": "Invalid role."
-        }, 400
-
-    member = AlbumMember(
+    album_member = AlbumMember(
         album_id=album.id,
-        user_id=member_user_id,
-        role=role
+        user_id=member.id,
+        role=member_role
     )
 
-    db.session.add(member)
+    db.session.add(album_member)
     db.session.commit()
 
     return {
         "message": "Member added successfully.",
         "member": {
-            "id": member.id,
-            "album_id": member.album_id,
-            "user_id": member.user_id,
-            "role": member.role,
-            "joined_at": member.joined_at.isoformat(),
+            "id": album_member.id,
+            "album_id": album_member.album_id,
+            "user_id": album_member.user_id,
+            "role": album_member.role,
+            "joined_at": album_member.joined_at.isoformat(),
         }
     }, 201
 
@@ -85,18 +90,18 @@ def add_album_member(album_id):
 @album_member_bp.get("/<int:album_id>/members")
 @jwt_required()
 @app_unlocked_required
-def get_album_members(album_id):
+def get_members(album_id):
     user_id = int(get_jwt_identity())
 
-    album = Album.query.filter_by(
-        id=album_id,
-        owner_id=user_id
-    ).first()
+    album, role = get_album_access(album_id, user_id)
 
     if not album:
+        return {"error": "Album not found."}, 404
+
+    if role is None:
         return {
-            "error": "Album not found."
-        }, 404
+            "error": "You do not have access to this album."
+        }, 403
 
     members = AlbumMember.query.filter_by(
         album_id=album.id
@@ -110,6 +115,8 @@ def get_album_members(album_id):
             {
                 "id": member.id,
                 "user_id": member.user_id,
+                "username": member.user.username,
+                "display_name": member.user.display_name,
                 "role": member.role,
                 "joined_at": member.joined_at.isoformat(),
             }

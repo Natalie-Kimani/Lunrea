@@ -2,8 +2,12 @@ from flask import Blueprint, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from app.extensions import db
-from app.models import Album, Chapter, ChapterMemory, Memory
+from app.models import Chapter, Memory, ChapterMemory
 from app.utils.app_lock import app_unlocked_required
+from app.utils.album_permissions import (
+    get_album_access,
+    can_contribute,
+)
 
 
 chapter_memory_bp = Blueprint(
@@ -16,24 +20,32 @@ chapter_memory_bp = Blueprint(
 @chapter_memory_bp.post("/<int:chapter_id>/memories")
 @jwt_required()
 @app_unlocked_required
-def add_chapter_memory(chapter_id):
+def add_memory_to_chapter(chapter_id):
     user_id = int(get_jwt_identity())
 
-    chapter = Chapter.query.get(chapter_id)
+    chapter = Chapter.query.filter_by(
+        id=chapter_id
+    ).first()
 
     if not chapter:
         return {
             "error": "Chapter not found."
         }, 404
 
-    album = Album.query.filter_by(
-        id=chapter.album_id
-    ).first()
+    album, role = get_album_access(
+        chapter.album_id,
+        user_id
+    )
 
-    if not album or album.owner_id != user_id:
+    if not album:
         return {
-            "error": "Chapter not found."
+            "error": "Album not found."
         }, 404
+
+    if not can_contribute(role):
+        return {
+            "error": "You do not have permission to add memories to this chapter."
+        }, 403
 
     data = request.get_json() or {}
 
@@ -49,7 +61,7 @@ def add_chapter_memory(chapter_id):
         creator_id=user_id
     ).first()
 
-    if not memory or memory.deleted_at is not None:
+    if not memory:
         return {
             "error": "Memory not found."
         }, 404
@@ -95,21 +107,29 @@ def add_chapter_memory(chapter_id):
 def get_chapter_memories(chapter_id):
     user_id = int(get_jwt_identity())
 
-    chapter = Chapter.query.get(chapter_id)
+    chapter = Chapter.query.filter_by(
+        id=chapter_id
+    ).first()
 
     if not chapter:
         return {
             "error": "Chapter not found."
         }, 404
 
-    album = Album.query.filter_by(
-        id=chapter.album_id
-    ).first()
+    album, role = get_album_access(
+        chapter.album_id,
+        user_id
+    )
 
-    if not album or album.owner_id != user_id:
+    if not album:
         return {
-            "error": "Chapter not found."
+            "error": "Album not found."
         }, 404
+
+    if role is None:
+        return {
+            "error": "You do not have access to this album."
+        }, 403
 
     chapter_memories = ChapterMemory.query.filter_by(
         chapter_id=chapter.id
@@ -122,21 +142,21 @@ def get_chapter_memories(chapter_id):
         "chapter_id": chapter.id,
         "memories": [
             {
-                "id": item.memory.id,
-                "title": item.memory.title,
-                "caption": item.memory.caption,
-                "description": item.memory.description,
-                "location": item.memory.location,
+                "id": cm.memory.id,
+                "title": cm.memory.title,
+                "caption": cm.memory.caption,
+                "description": cm.memory.description,
+                "location": cm.memory.location,
                 "memory_date": (
-                    item.memory.memory_date.isoformat()
-                    if item.memory.memory_date
+                    cm.memory.memory_date.isoformat()
+                    if cm.memory.memory_date
                     else None
                 ),
-                "why_it_matters": item.memory.why_it_matters,
-                "position": item.position,
-                "added_by": item.added_by,
-                "added_at": item.added_at.isoformat(),
+                "why_it_matters": cm.memory.why_it_matters,
+                "position": cm.position,
+                "added_by": cm.added_by,
+                "added_at": cm.added_at.isoformat(),
             }
-            for item in chapter_memories
+            for cm in chapter_memories
         ]
     }, 200
