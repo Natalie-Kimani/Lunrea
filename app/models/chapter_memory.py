@@ -13,7 +13,7 @@ class ChapterMemory(db.Model):
 
     chapter_id = db.Column(
         db.Integer,
-        db.ForeignKey("chapters.id"),
+        db.ForeignKey("chapters.id", ondelete="CASCADE"),
         nullable=False
     )
 

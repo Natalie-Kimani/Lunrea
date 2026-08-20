@@ -13,7 +13,7 @@ class AlbumMemory(db.Model):
 
     album_id = db.Column(
         db.Integer,
-        db.ForeignKey("albums.id"),
+        db.ForeignKey("albums.id", ondelete="CASCADE"),
         nullable=False
     )
 
