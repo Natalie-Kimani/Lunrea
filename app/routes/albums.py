@@ -131,3 +131,100 @@ def get_albums():
             for album in albums
         ]
     }, 200
+
+@album_bp.patch("/<int:album_id>")
+@jwt_required()
+@app_unlocked_required
+def update_album(album_id):
+    user_id = int(get_jwt_identity())
+
+    album = Album.query.filter_by(
+        id=album_id,
+        owner_id=user_id
+    ).first()
+
+    if not album:
+        return {
+            "error": "Album not found."
+        }, 404
+
+    data = request.get_json() or {}
+
+    if "title" in data:
+        if not data["title"]:
+            return {
+                "error": "title cannot be empty."
+            }, 400
+
+        album.title = data["title"]
+
+    if "description" in data:
+        album.description = data["description"]
+
+    if "theme" in data:
+        album.theme = data["theme"]
+
+    if "privacy" in data:
+        if data["privacy"] not in {"private", "shared"}:
+            return {
+                "error": "privacy must be private or shared."
+            }, 400
+
+        album.privacy = data["privacy"]
+
+    if "start_date" in data:
+        album.start_date = data["start_date"]
+
+    if "end_date" in data:
+        album.end_date = data["end_date"]
+
+    db.session.commit()
+
+    return {
+        "message": "Album updated successfully.",
+        "album": {
+            "id": album.id,
+            "owner_id": album.owner_id,
+            "title": album.title,
+            "description": album.description,
+            "cover_media_id": album.cover_media_id,
+            "theme": album.theme,
+            "start_date": (
+                album.start_date.isoformat()
+                if album.start_date
+                else None
+            ),
+            "end_date": (
+                album.end_date.isoformat()
+                if album.end_date
+                else None
+            ),
+            "privacy": album.privacy,
+            "created_at": album.created_at.isoformat(),
+            "updated_at": album.updated_at.isoformat(),
+        }
+    }, 200
+
+
+@album_bp.delete("/<int:album_id>")
+@jwt_required()
+@app_unlocked_required
+def delete_album(album_id):
+    user_id = int(get_jwt_identity())
+
+    album = Album.query.filter_by(
+        id=album_id,
+        owner_id=user_id
+    ).first()
+
+    if not album:
+        return {
+            "error": "Album not found."
+        }, 404
+
+    db.session.delete(album)
+    db.session.commit()
+
+    return {
+        "message": "Album deleted successfully."
+    }, 200
