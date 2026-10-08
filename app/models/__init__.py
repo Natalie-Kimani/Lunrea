@@ -11,6 +11,9 @@ from app.models.album_memory import AlbumMemory
 from app.models.chapter_memory import ChapterMemory
 from app.models.memory_person import MemoryPerson
 from app.models.app_session import AppSession
+from app.models.chat_room import ChatRoom
+from app.models.chat_member import ChatMember
+from app.models.chat_message import ChatMessage
 
 __all__ = [
     "User",
@@ -26,4 +29,7 @@ __all__ = [
     "ChapterMemory",
     "MemoryPerson",
     "AppSession",
+    "ChatRoom",
+    "ChatMember",
+    "ChatMessage",
 ]

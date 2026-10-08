@@ -109,30 +109,49 @@ def login():
         }
     }, 200
 
+@auth_bp.get("/pin-status")
+@jwt_required()
+def pin_status():
+    user = db.session.get(User, int(get_jwt_identity()))
+    if not user:
+        return {"error": "User not found."}, 404
+    return {"pin_set": bool(user.app_pin_hash)}, 200
+
+
+@auth_bp.post("/pin")
+@jwt_required()
+def set_pin():
+    user = db.session.get(User, int(get_jwt_identity()))
+    if not user:
+        return {"error": "User not found."}, 404
+
+    data = request.get_json() or {}
+    pin = str(data.get("pin") or "").strip()
+    try:
+        user.set_app_pin(pin)
+    except ValueError as error:
+        return {"error": str(error)}, 400
+
+    db.session.commit()
+    return {"message": "App PIN saved."}, 200
+
+
 @auth_bp.post("/unlock")
 @jwt_required()
 def unlock():
     user_id = get_jwt_identity()
-
     data = request.get_json() or {}
-    password = data.get("password")
-
-    if not password:
-        return {
-            "error": "Password is required."
-        }, 400
+    pin = str(data.get("pin") or "").strip()
 
     user = db.session.get(User, int(user_id))
-
     if not user:
-        return {
-            "error": "User not found."
-        }, 404
+        return {"error": "User not found."}, 404
 
-    if not user.check_password(password):
-        return {
-            "error": "Invalid password."
-        }, 401
+    if not user.app_pin_hash:
+        return {"error": "Set your Lunrea PIN before unlocking."}, 409
+
+    if not user.check_app_pin(pin):
+        return {"error": "Incorrect PIN."}, 401
 
     session = create_unlock_session(user.id)
 
@@ -193,4 +212,58 @@ def me():
         "username": user.username,
         "email": user.email,
         "display_name": user.display_name
+    }, 200
+
+
+@auth_bp.post("/logout")
+@jwt_required()
+def logout():
+    user_id = int(get_jwt_identity())
+    data = request.get_json(silent=True) or {}
+    session_token = data.get("session_token") or request.headers.get("X-App-Session")
+
+    if session_token:
+        session = AppSession.query.filter_by(
+            user_id=user_id,
+            session_token=session_token,
+            is_locked=False,
+        ).first()
+        if session:
+            lock_session(session)
+
+    return {
+        "message": "Logged out successfully."
+    }, 200
+
+
+@auth_bp.get("/users")
+@jwt_required()
+def users():
+    current_user_id = int(get_jwt_identity())
+    query = (request.args.get("q") or "").strip()
+
+    if len(query) < 2:
+        return {"users": []}, 200
+
+    users = (
+        User.query
+        .filter(User.id != current_user_id)
+        .filter(
+            (User.username.ilike(f"%{query}%")) |
+            (User.display_name.ilike(f"%{query}%"))
+        )
+        .order_by(User.username.asc())
+        .limit(20)
+        .all()
+    )
+
+    return {
+        "users": [
+            {
+                "id": user.id,
+                "username": user.username,
+                "display_name": user.display_name,
+            }
+            for user in users
+        ]
     }, 200

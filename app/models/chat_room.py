@@ -49,8 +49,8 @@ class ChatRoom(db.Model):
     )
 
     creator = db.relationship("User", backref="chat_rooms_created")
-    album = db.relationship("Album", backref="chat_rooms")
-    chapter = db.relationship("Chapter", backref="chat_rooms")
+    album = db.relationship("Album", backref=db.backref("chat_rooms", cascade="all, delete-orphan", passive_deletes=True))
+    chapter = db.relationship("Chapter", backref=db.backref("chat_rooms", cascade="all, delete-orphan", passive_deletes=True))
     memory = db.relationship("Memory", backref="chat_rooms")
 
     def __repr__(self):

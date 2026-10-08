@@ -54,7 +54,7 @@ class Chapter(db.Model):
 
     album = db.relationship(
         "Album",
-        backref="chapters"
+        backref=db.backref("chapters", cascade="all, delete-orphan", passive_deletes=True)
     )
 
     creator = db.relationship(

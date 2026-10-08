@@ -30,6 +30,11 @@ class User(db.Model):
         nullable=False
     )
 
+    app_pin_hash = db.Column(
+        db.String(255),
+        nullable=True
+    )
+
     display_name = db.Column(
         db.String(100),
         nullable=False
@@ -102,6 +107,23 @@ class User(db.Model):
         return bcrypt.checkpw(
             plain_password.encode("utf-8"),
             self.password_hash.encode("utf-8")
+        )
+
+    def set_app_pin(self, pin):
+        pin = str(pin or "").strip()
+        if not pin.isdigit() or len(pin) not in (4, 5, 6):
+            raise ValueError("PIN must be 4 to 6 digits.")
+        self.app_pin_hash = bcrypt.hashpw(
+            pin.encode("utf-8"),
+            bcrypt.gensalt()
+        ).decode("utf-8")
+
+    def check_app_pin(self, pin):
+        if not self.app_pin_hash:
+            return False
+        return bcrypt.checkpw(
+            str(pin).encode("utf-8"),
+            self.app_pin_hash.encode("utf-8")
         )
 
     def __repr__(self):

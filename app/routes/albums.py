@@ -4,7 +4,7 @@ from flask import Blueprint, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from app.extensions import db
-from app.models import Album
+from app.models import Album, AlbumMember
 from app.utils.app_lock import app_unlocked_required
 
 
@@ -99,11 +99,18 @@ def create_album():
 def get_albums():
     user_id = int(get_jwt_identity())
 
-    albums = Album.query.filter_by(
-        owner_id=user_id
-    ).order_by(
-        Album.created_at.asc()
-    ).all()
+    memberships = AlbumMember.query.filter_by(user_id=user_id).all()
+    member_album_ids = {membership.album_id for membership in memberships}
+
+    albums = (
+        Album.query
+        .filter(
+            (Album.owner_id == user_id) |
+            Album.id.in_(member_album_ids)
+        )
+        .order_by(Album.created_at.asc())
+        .all()
+    )
 
     return {
         "albums": [
@@ -125,6 +132,14 @@ def get_albums():
                     else None
                 ),
                 "privacy": album.privacy,
+                "role": (
+                    "owner" if album.owner_id == user_id
+                    else next(
+                        (membership.role for membership in memberships
+                         if membership.album_id == album.id),
+                        "viewer"
+                    )
+                ),
                 "created_at": album.created_at.isoformat(),
                 "updated_at": album.updated_at.isoformat(),
             }
@@ -173,10 +188,22 @@ def update_album(album_id):
         album.privacy = data["privacy"]
 
     if "start_date" in data:
-        album.start_date = data["start_date"]
+        if data["start_date"] is None:
+            album.start_date = None
+        else:
+            try:
+                album.start_date = datetime.fromisoformat(data["start_date"])
+            except (TypeError, ValueError):
+                return {"error": "start_date must be a valid ISO 8601 date."}, 400
 
     if "end_date" in data:
-        album.end_date = data["end_date"]
+        if data["end_date"] is None:
+            album.end_date = None
+        else:
+            try:
+                album.end_date = datetime.fromisoformat(data["end_date"])
+            except (TypeError, ValueError):
+                return {"error": "end_date must be a valid ISO 8601 date."}, 400
 
     db.session.commit()
 

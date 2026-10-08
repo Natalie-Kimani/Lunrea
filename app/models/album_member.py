@@ -5,6 +5,9 @@ from app.extensions import db
 
 class AlbumMember(db.Model):
     __tablename__ = "album_members"
+    __table_args__ = (
+        db.UniqueConstraint("album_id", "user_id", name="uq_album_members_album_user"),
+    )
 
     id = db.Column(
         db.Integer,
@@ -37,7 +40,7 @@ class AlbumMember(db.Model):
 
     album = db.relationship(
         "Album",
-        backref="members"
+        backref=db.backref("members", cascade="all, delete-orphan", passive_deletes=True)
     )
 
     user = db.relationship(

@@ -1,12 +1,13 @@
 import os
 import uuid
 
-from flask import Blueprint, current_app, request, send_file
+from flask import Blueprint, Response, current_app, request, send_file
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from app.extensions import db
 from app.models import Memory, Media
 from app.utils.app_lock import app_unlocked_required
+from app.services import storage
 
 ALLOWED_EXTENSIONS = {
     "jpg",
@@ -105,36 +106,17 @@ def upload_media(memory_id):
         f"{uuid.uuid4().hex}.{extension}"
     )
 
-    upload_directory = os.path.join(
-        current_app.root_path,
-        "..",
-        "uploads",
-        "memories"
-    )
-
-    upload_directory = os.path.abspath(upload_directory)
-
-    os.makedirs(
-        upload_directory,
-        exist_ok=True
-    )
-
-    file_path = os.path.join(
-        upload_directory,
-        safe_filename
-    )
-
-    file.save(file_path)
-
-    relative_path = os.path.relpath(
-        file_path,
-        os.path.abspath(
-            os.path.join(
-                current_app.root_path,
-                ".."
-            )
+    try:
+        relative_path = storage.save_upload(
+            file,
+            safe_filename,
+            file.mimetype,
         )
-    )
+    except Exception:
+        current_app.logger.exception("Upload storage failed")
+        return {
+            "error": "Could not store the file."
+        }, 500
 
     media = Media(
         memory_id=memory.id,
@@ -153,8 +135,7 @@ def upload_media(memory_id):
     except Exception:
         db.session.rollback()
 
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        storage.delete_file(relative_path)
 
         return {
             "error": "Could not save media."
@@ -209,6 +190,14 @@ def add_media(memory_id):
             return {
                 "error": f"{field} is required."
             }, 400
+
+    # Clients may not point at files in our own storage: uploads go through
+    # /upload, which is the only thing that creates stored paths.
+    stored = str(data["file_path"])
+    if ".." in stored or stored.startswith(("r2:", "/", "uploads")):
+        return {
+            "error": "Invalid file_path."
+        }, 400
 
     media = Media(
         memory_id=memory.id,
@@ -305,15 +294,30 @@ def get_media_file(media_id):
             "error": "Media not found."
         }, 404
 
-    file_path = os.path.abspath(
-        os.path.join(
-            current_app.root_path,
-            "..",
-            media.file_path
-        )
-    )
+    if storage.is_remote(media.file_path):
+        try:
+            remote = storage.open_remote(media.file_path)
+        except Exception:
+            return {
+                "error": "Media file not found."
+            }, 404
 
-    if not os.path.isfile(file_path):
+        headers = {
+            "Content-Disposition": f'inline; filename="{media.file_name}"',
+            "Cache-Control": "private, max-age=3600",
+        }
+        if remote.get("ContentLength") is not None:
+            headers["Content-Length"] = str(remote["ContentLength"])
+
+        return Response(
+            remote["Body"].iter_chunks(chunk_size=64 * 1024),
+            mimetype=media.mime_type or "application/octet-stream",
+            headers=headers,
+        )
+
+    file_path = storage.local_path(media.file_path)
+
+    if not file_path or not os.path.isfile(file_path):
         return {
             "error": "Media file not found."
         }, 404

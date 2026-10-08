@@ -1,23 +1,31 @@
+# Python
 venv/
 __pycache__/
 *.py[cod]
+*.pyo
 
+# Environment / secrets
 .env
 
-instance/
-
+# Flask uploads
 uploads/
 
-.pytest_cache/
+# Node
+frontend/node_modules/
 
-.mypy_cache/
+# Frontend build
+frontend/dist/
 
-.coverage
-htmlcov/
+# Logs
+*.log
 
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
 .vscode/
 .idea/
 
-*.db
-*.sqlite
-*.sqlite3
+# Local archives
+*.zip

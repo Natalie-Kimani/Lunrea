@@ -37,7 +37,7 @@ class AlbumMemory(db.Model):
 
     album = db.relationship(
         "Album",
-        backref="album_memories"
+        backref=db.backref("album_memories", cascade="all, delete-orphan", passive_deletes=True)
     )
 
     memory = db.relationship(

@@ -43,7 +43,7 @@ class ChapterMemory(db.Model):
 
     chapter = db.relationship(
         "Chapter",
-        backref="chapter_memories"
+        backref=db.backref("chapter_memories", cascade="all, delete-orphan", passive_deletes=True)
     )
 
     memory = db.relationship(

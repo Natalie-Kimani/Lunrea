@@ -9,18 +9,7 @@ def create_app():
     app = Flask(__name__)
 
     app.config.from_object(Config)
-
-    CORS(
-        app,
-        resources={  
-            r"/api/*": {
-                "origins": [
-                    "http://localhost:5173",
-                    "http://127.0.0.1:5173",
-                ]
-            }
-        }
-    )
+    CORS(app, resources={r"/api/*": {"origins": app.config["CORS_ORIGINS"]}})
 
     db.init_app(app)
     migrate.init_app(app, db)
@@ -40,6 +29,9 @@ def create_app():
         AlbumMemory,
         ChapterMemory,
         MemoryPerson,
+        ChatRoom,
+        ChatMember,
+        ChatMessage,
     )
 
     from app.routes.main import main_bp
@@ -80,5 +72,8 @@ def create_app():
 
     from app.routes.chapter_memories import chapter_memory_bp
     app.register_blueprint(chapter_memory_bp)
+
+    from app.routes.chat import chat_bp
+    app.register_blueprint(chat_bp)
 
     return app
